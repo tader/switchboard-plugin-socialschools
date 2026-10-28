@@ -23,11 +23,13 @@ jobs:
       # Explicit dispatch runs CI on the release branch even when the PR was
       # created with GITHUB_TOKEN. This supplies the required branch check.
       - name: Run required CI on release PRs
+        if: steps.release.outputs.prs_created == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          RELEASE_PRS: ${{ steps.release.outputs.prs }}
         run: |
-          gh pr list --state open --label 'autorelease: pending' --json headRefName --jq '.[].headRefName' |
+          node -e 'for (const pr of JSON.parse(process.env.RELEASE_PRS || "[]")) console.log(pr.headBranchName)' |
           while IFS= read -r branch; do
             gh workflow run ci.yml --ref "$branch"
           done
