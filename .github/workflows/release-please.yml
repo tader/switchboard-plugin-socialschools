@@ -1,0 +1,33 @@
+name: Release Please
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: write
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@0dfd8538845b8e92600d271a895a5372865d4062 # v5
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+      # Explicit dispatch runs CI on the release branch even when the PR was
+      # created with GITHUB_TOKEN. This supplies the required branch check.
+      - name: Run required CI on release PRs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh pr list --state open --label 'autorelease: pending' --json headRefName --jq '.[].headRefName' |
+          while IFS= read -r branch; do
+            gh workflow run ci.yml --ref "$branch"
+          done
