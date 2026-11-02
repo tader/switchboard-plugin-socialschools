@@ -1,7 +1,7 @@
 {
   "id": "socialschools",
   "name": "Social Schools",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "School announcements, events, conversations, and parent meetings.",
   "main": "index.js",
   "icon": "icon.svg",
