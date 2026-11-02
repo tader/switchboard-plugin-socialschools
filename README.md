@@ -2,18 +2,20 @@
 
 Connect your Social Schools account to [Switchboard](https://github.com/tader/switchboard) and use its authenticated HTTP API, API console, and MCP tools to access announcements, calendar events, conversations, teachers, and parent meeting schedules.
 
-Install **`tader/switchboard-plugin-socialschools`** from **Plugins → Install from GitHub**. Requires Node.js 24 or later; no plugin dependencies or administrator OAuth registration are needed for standard web sign-in.
+Install **`tader/switchboard-plugin-socialschools`** from **Plugins → Install from GitHub**. Requires Node.js 24 or later; no plugin dependencies or administrator OAuth registration are needed.
 
 ## Connect
 
-1. Add a **Social Schools** connection and choose **Sign in with Social Schools**.
-2. Under **Advanced**, set **Redirect URI** to `https://app.socialschools.eu/silent.html`.
-3. Start sign-in. Sign in at Social Schools using your usual method. The return page is blank; copy its **full address**, including the query string.
-4. Paste that address into the waiting Switchboard sign-in dialog. Switchboard validates the state, exchanges the PKCE code, and identifies your school role.
+1. Add a **Social Schools** connection and choose **Persistent sign-in**.
+2. Enter your Social Schools username/email and password, then connect.
+
+The plugin performs the native app's authorization-code + PKCE flow headlessly and obtains its own refresh token. Your password is used only during setup. Switchboard stores encrypted OAuth tokens; the plugin does not retain your username input, password, login cookies, or browser profile. No browser, callback override, or token import is needed.
 
 Parent/guardian is the default role. If your account belongs to several schools, set **School ID** in Advanced; school IDs are available in the Social Schools profile response (`/useraccounts/current`). Use separate connections for different school roles. The **Access token** method is also available for existing tokens.
 
-**Standard web sign-in currently lasts about one hour.** The verified Social Schools web client does not issue a refresh token with its normal scopes. Reconnect when the token expires; remaining signed in to Social Schools generally makes this a short return-URL flow. This plugin does not store your password or browser cookies. A separately registered OAuth client can be configured in plugin settings; if its registration permits `offline_access`, enable **Request refresh tokens** to use automatic refresh. That custom-client configuration has unit coverage but has not been verified with a live registered client.
+Access tokens last about one hour and renew automatically using the refresh token, including after Switchboard restarts. The refresh token's maximum lifetime is unknown; expiration or revocation still requires **Reconnect** and a fresh password. Existing web/token connections need a fresh sign-in with **Persistent sign-in** to obtain refresh tokens. When changing an existing browser connection, clear its Redirect URI override.
+
+For Google, Microsoft, Apple, or additional authentication steps, choose **Sign in with Social Schools** for browser sign-in. Under **Advanced**, set **Redirect URI** to `https://app.socialschools.eu/silent.html`. After signing in, copy the full address of the blank page, including its query string, into Switchboard's waiting dialog. This web method normally lasts about one hour without automatic renewal. A separately registered OAuth client can be configured in plugin settings; enable **Request refresh tokens** only if it permits `offline_access`. These custom-client settings do not affect persistent sign-in.
 
 ## Available operations
 
@@ -51,6 +53,6 @@ npm run check
 npm test
 ```
 
-Tests mock authentication and cover PKCE/state, school selection, credential persistence, request restrictions, refresh rotation, and error redaction. Live read checks are described in [RESEARCH.md](RESEARCH.md); they require a real account and are not run in CI.
+Tests use synthetic authentication responses and cover native login forms/cookies, PKCE/state, redirect restrictions, school selection, credential persistence, client binding, refresh rotation, and error redaction. Fresh native sign-in, refresh, and profile access have also been verified live. Live checks are described in [RESEARCH.md](RESEARCH.md); they require a real account and are not run in CI.
 
 Release Please manages version/changelog PRs and GitHub releases. Package and plugin versions are updated together, and the API reference reads the plugin version. Release PRs explicitly dispatch the same required `test` check as normal changes. `main` requires pull requests, current passing CI, and resolved conversations, including for administrators.

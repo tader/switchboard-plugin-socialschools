@@ -6,7 +6,15 @@ order: 1
 
 # Connecting Social Schools
 
-Add a Social Schools connection. Choose **Sign in with Social Schools**, open **Advanced**, and set **Redirect URI** to:
+Add a Social Schools connection and choose **Persistent sign-in**. Enter your Social Schools username/email and password. The plugin completes the native app's PKCE login flow headlessly and obtains a new refresh token for this connection. No browser or Redirect URI is needed.
+
+Your username input, password, and login cookies are discarded after setup. Only OAuth tokens and the selected school/role are retained, encrypted by Switchboard. One-hour access tokens renew automatically, including after a restart. The refresh token can still expire or be revoked; reconnect with your password when that happens. Its maximum lifetime has not been established.
+
+Existing connections require a fresh sign-in with **Persistent sign-in** to gain automatic renewal. Clear any existing Redirect URI override when switching from browser sign-in.
+
+## Browser sign-in
+
+Use **Sign in with Social Schools** when you sign in through Google, Microsoft, Apple, or an additional authentication step. Open **Advanced** and set **Redirect URI** to:
 
 ```text
 https://app.socialschools.eu/silent.html
@@ -14,7 +22,9 @@ https://app.socialschools.eu/silent.html
 
 Sign in at Social Schools. When the blank return page appears, copy the complete address and paste it into Switchboard's waiting dialog. The address contains a short-lived sign-in code; paste it only into the sign-in dialog. The plugin uses PKCE and checks the sign-in state before exchanging that code.
 
-The standard web client issues a token lasting about one hour without a refresh token. Reconnect when it expires. Administrators with a separately registered client may configure it in plugin settings; its registered Switchboard callback is `{{callbackUrl}}`. Only enable refresh tokens if that client permits `offline_access`.
+The standard web client issues a token lasting about one hour without a refresh token. Reconnect when it expires. Administrators with a separately registered client may configure it in plugin settings; its registered Switchboard callback is `{{callbackUrl}}`. Only enable refresh tokens if that client permits `offline_access`. These settings do not affect **Persistent sign-in**.
+
+## School and role
 
 The default role is **Parent/guardian**. For multiple schools, enter a **School ID** in Advanced and create a connection per school role. An **Access token** connection can be used to read `/useraccounts/current` with an explicitly selected school if needed; the official app's profile response also contains `roles[].school.id`.
 

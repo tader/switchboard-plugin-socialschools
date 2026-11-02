@@ -13,6 +13,18 @@ These assets were inspected for endpoint and request shapes; upstream applicatio
 
 ## Authentication
 
+### Native app and persistent sign-in
+
+On 2026-11-02, a user-supplied iOS mitmproxy capture established that the native client is `eu.socialschools.ios`, uses authorization code + PKCE S256, redirects to `eu.socialschools.ios:/oauthredirect`, and requests `openid profile SocsWebApi email offline_access SocsNotificationApi`. Both the initial code exchange and a refresh request returned HTTP 200 with access and refresh tokens. Neither exchange required a client secret; the captured refresh request sent no cookies. The observed refresh response retained the same refresh token, but the plugin also supports rotation.
+
+The captured password sign-in uses `/Account/Login`, an anti-CSRF hidden input and cookie, and a hidden `ReturnUrl`. Successful login returns an HTML meta-refresh to `/connect/authorize/callback`, which redirects to the native callback. The plugin follows this flow with a temporary, host-restricted cookie jar and intercepts the callback internally. It validates state, issuer, PKCE context, and callback URI before exchanging the new code. It does not execute page JavaScript or fetch app content during sign-in.
+
+The implemented plugin was then exercised with a **fresh sign-in**, rather than importing captured tokens. Code exchange, profile identification, forced refresh, and a profile GET using the renewed token all returned HTTP 200. Tokens lasted 3,600 seconds and a refresh token was present. The server did not establish the refresh token's maximum lifetime. The verification retained no credentials, cookies, raw responses, or capture contents in repository files, fixtures, or tool output. Tests use synthetic values only. No school content was written.
+
+Persistent credentials include their issuing OAuth client ID, so native refresh never uses an administrator's custom client ID/secret. Legacy credentials without a client ID retain the previous configured-client behavior. The password, username input, temporary cookies, authorization code, PKCE material, and unused ID token are not persisted.
+
+### Web and registered clients
+
 The web client uses authorization code + PKCE S256, issuer `https://login.socialschools.eu`, client `eu.socialschools.webapp`, and scopes `openid SocsWebApi`. Its callbacks include `/callback.html` and `/silent.html` on `https://app.socialschools.eu`. The normal callback redirects away on an unknown OIDC state; the silent callback retains the return URL. This makes the silent callback usable with Switchboard's explicit redirect-URI override and manual return-URL completion.
 
 The plugin's actual connect/callback implementation was exercised with that flow. Code exchange and profile identification succeeded. The token lifetime was 3,600 seconds, and no refresh token was issued. Custom registered clients and offline access were not available for live testing; those paths have mocked tests only.

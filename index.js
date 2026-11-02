@@ -1,13 +1,15 @@
 import { randomBytes, createHash } from 'node:crypto';
 import openapi from './openapi.js';
+import { nativeAuthorization, LOGIN, IOS_CLIENT, IOS_CALLBACK } from './native-login.js';
+
+export { LOGIN, IOS_CLIENT, IOS_CALLBACK };
 
 export const API = 'https://api.socialschools.eu/api/v1/';
-export const LOGIN = 'https://login.socialschools.eu';
 export const WEB_CLIENT = 'eu.socialschools.webapp';
 export const WEB_CALLBACK = 'https://app.socialschools.eu/silent.html';
 const timeout = () => AbortSignal.timeout(30_000);
 
-async function jsonRequest(url, options = {}) {
+async function jsonRequest(url, options = {}, refreshing = false) {
   let response;
   try {
     response = await fetch(url, { ...options, redirect: 'error', signal: options.signal ?? timeout() });
@@ -16,7 +18,7 @@ async function jsonRequest(url, options = {}) {
   }
   if (!response.ok) {
     // Never surface upstream error bodies: they may contain credentials or account data.
-    if (response.status === 401) throw new Error('Social Schools sign-in expired. Reconnect your account.');
+    if (response.status === 401 || (refreshing && response.status === 400)) throw new Error('Social Schools sign-in expired. Reconnect your account.');
     throw new Error(`Social Schools returned HTTP ${response.status}.`);
   }
   try { return await response.json(); }
@@ -71,25 +73,35 @@ export default function setup(ctx) {
     { key: 'roleType', label: 'Role type', type: 'select', default: '1', options: [{ value: '1', label: 'Parent/guardian' }, { value: '2', label: 'Employee' }, { value: '3', label: 'Student' }], advanced: true },
     { key: 'allowWrites', label: 'Allow messages and changes', type: 'boolean', default: false, description: 'Allows sending messages and changing meeting reservations. Reads may update read receipts at Social Schools.' },
   ];
-  async function exchange(params, previous = {}) {
-    const body = new URLSearchParams({ client_id: clientId, ...params });
-    if (customClient && settings.clientSecret) body.set('client_secret', settings.clientSecret);
-    const data = await jsonRequest(`${LOGIN}/connect/token`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body });
-    if (typeof data.access_token !== 'string' || !data.access_token || /[\r\n]/.test(data.access_token)) {
+  async function exchange(params, previous = {}, oauthClientId = previous.oauthClientId ?? clientId) {
+    const body = new URLSearchParams({ client_id: oauthClientId, ...params });
+    if (oauthClientId !== WEB_CLIENT && oauthClientId !== IOS_CLIENT) {
+      if (oauthClientId !== clientId) throw new Error('The configured Social Schools OAuth client changed. Reconnect your account.');
+      if (settings.clientSecret) body.set('client_secret', settings.clientSecret);
+    }
+    const data = await jsonRequest(`${LOGIN}/connect/token`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body }, params.grant_type === 'refresh_token');
+    const validToken = value => typeof value === 'string' && value.length > 0 && !/[\x00-\x20\x7f]/.test(value);
+    if (!validToken(data?.access_token)) {
       throw new Error('Social Schools did not return a valid access token.');
+    }
+    if (data.refresh_token !== undefined && !validToken(data.refresh_token)) throw new Error('Social Schools did not return a valid refresh token.');
+    const expiresIn = Number(data.expires_in);
+    if (data.expires_in !== undefined && (!Number.isFinite(expiresIn) || expiresIn <= 0 || !Number.isFinite(Date.now() + expiresIn * 1000))) {
+      throw new Error('Social Schools did not return a valid token lifetime.');
     }
     return {
       ...previous,
+      oauthClientId,
       accessToken: data.access_token,
       refreshToken: data.refresh_token ?? previous.refreshToken,
-      expiresAt: Number(data.expires_in) > 0 ? Date.now() + Number(data.expires_in) * 1000 : undefined,
+      expiresAt: expiresIn > 0 ? Date.now() + expiresIn * 1000 : undefined,
     };
   }
   async function fresh(conn, force) {
     const c = conn.credentials;
     if (typeof c?.accessToken !== 'string' || !c.accessToken || /[\r\n]/.test(c.accessToken)) throw new Error('Reconnect your Social Schools account.');
     if (!force && !(c.expiresAt !== undefined && c.expiresAt < Date.now() + 60_000)) return { credentials: c, refreshed: false };
-    if (!c.refreshToken) throw new Error('Social Schools sign-in expired. Reconnect your account.');
+    if (typeof c.refreshToken !== 'string' || !c.refreshToken || /[\x00-\x20\x7f]/.test(c.refreshToken)) throw new Error('Social Schools sign-in expired. Reconnect your account.');
     return { credentials: await exchange({ grant_type: 'refresh_token', refresh_token: c.refreshToken }, c), refreshed: true };
   }
   const common = {
@@ -107,6 +119,20 @@ export default function setup(ctx) {
     description: 'Announcements, calendar events, conversations, and parent meetings.',
     baseUrl: API, allowedHosts: ['api.socialschools.eu'], openapi,
     authMethods: [{
+      ...common, id: 'ios', name: 'Persistent sign-in',
+      description: 'Sign in using the native app flow. Your password is used only during setup; refresh tokens keep this connection signed in.',
+      fields: [
+        { key: 'username', label: 'Username or email', required: true },
+        { key: 'password', label: 'Password', type: 'secret', required: true },
+        ...fields,
+      ],
+      async connect({ config }) {
+        const { code, verifier } = await nativeAuthorization(config);
+        const credentials = await exchange({ grant_type: 'authorization_code', code, code_verifier: verifier, redirect_uri: IOS_CALLBACK }, {}, IOS_CLIENT);
+        if (!credentials.refreshToken) throw new Error('Social Schools did not issue a refresh token. Try signing in again.');
+        return identify(credentials, config);
+      },
+    }, {
       ...common, id: 'oauth', name: 'Sign in with Social Schools',
       description: customClient ? 'Sign in with your registered Social Schools client.' : `In Advanced, set Redirect URI to ${WEB_CALLBACK}. After sign-in, copy the full address of the blank page and paste it back into Switchboard.`,
       fields,
