@@ -6,7 +6,8 @@ import openapi from '../openapi.js';
 
 const account = { userProfileId: 42, displayName: 'Example parent', roles: [{ type: 1, school: { id: 7, displayName: 'Example school' } }] };
 const service = (settings = {}) => setup({ settings }).services[0];
-const oauth = settings => service(settings).authMethods[0];
+const oauth = settings => service(settings).authMethods.find(m => m.id === 'oauth');
+const token = () => service().authMethods.find(m => m.id === 'token');
 const response = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 const conn = (extra = {}) => ({ config: { allowWrites: false }, credentials: { accessToken: 'example-token', schoolId: 7, roleType: 1 }, ...extra });
 const request = (method = 'GET', url = `${API}events`) => ({ method, url: new URL(url), headers: new Headers() });
@@ -63,7 +64,7 @@ test('custom clients use their callback, secret, and optional offline_access', a
 
 test('multiple schools require explicit selection; account identity includes school and role', async t => {
   t.mock.method(globalThis, 'fetch', async () => response({ ...account, roles: [...account.roles, { type: 1, school: { id: 8, name: 'Other school' } }] }));
-  const auth = service().authMethods[1];
+  const auth = token();
   await assert.rejects(auth.connect({ config: { accessToken: 'token' } }), /several school roles/);
   const result = await auth.connect({ config: { accessToken: 'token', schoolId: '8' } });
   assert.equal(result.account.id, '42:8:1');
@@ -116,7 +117,7 @@ test('expired tokens without refresh require reconnection, including a forced 40
 });
 
 test('upstream errors and network exceptions never expose response bodies or credentials', async t => {
-  const auth = service().authMethods[1];
+  const auth = token();
   t.mock.method(globalThis, 'fetch', async () => response({ secret: 'sensitive-upstream-data' }, 403));
   await assert.rejects(auth.connect({ config: { accessToken: 'token' } }), e => /HTTP 403/.test(e.message) && !e.message.includes('sensitive'));
   globalThis.fetch = async () => { throw new Error('sensitive-network-data'); };

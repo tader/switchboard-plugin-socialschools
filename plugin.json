@@ -9,7 +9,7 @@
     {
       "key": "clientId",
       "label": "Registered OAuth client ID",
-      "description": "Optional. Leave empty to use Social Schools web sign-in with a pasted return URL."
+      "description": "Optional browser sign-in client. Persistent sign-in works without this setting."
     },
     {
       "key": "clientSecret",
@@ -21,7 +21,7 @@
       "label": "Request refresh tokens",
       "type": "boolean",
       "default": false,
-      "description": "Only for a registered client that permits offline_access."
+      "description": "Only for a registered browser sign-in client that permits offline_access. Persistent sign-in requests refresh tokens automatically."
     }
   ]
 }
